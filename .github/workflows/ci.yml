@@ -81,7 +81,10 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Install frontend dependencies
-        run: npm install --legacy-peer-deps
+        working-directory: client
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm install --legacy-peer-deps --no-audit --no-fund --fetch-retries=5 --fetch-timeout=120000
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
