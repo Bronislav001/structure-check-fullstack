@@ -1,0 +1,18 @@
+{
+  "name": "structure-check-main",
+  "private": true,
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n web,api \"npm --prefix client run dev\" \"server/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir server --reload --host 0.0.0.0 --port 8080\"",
+    "dev:web": "npm --prefix client run dev",
+    "dev:api": "server/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir server --reload --host 0.0.0.0 --port 8080",
+    "build": "npm --prefix client run build",
+    "preview": "npm --prefix client run preview",
+    "test:api": "server/.venv/Scripts/python.exe -m pytest server/tests -q",
+    "test:web": "npm --prefix client run test",
+    "test:e2e": "npm --prefix client run test:e2e",
+    "test": "npm run test:api && npm run test:web"
+  }
+}

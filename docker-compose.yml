@@ -1,0 +1,114 @@
+name: struct-check
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: struct-check-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-net
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: struct-check-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-struct-check-files}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
+        echo 'waiting for minio...'; sleep 2;
+      done;
+      mc mb -p local/$$MINIO_BUCKET || true;
+      mc anonymous set none local/$$MINIO_BUCKET || true;
+      echo 'bucket is ready';
+      "
+    networks:
+      - app-net
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: struct-check-backend
+    environment:
+      APP_ENV: docker
+      CORS_ORIGINS: http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
+      PUBLIC_FRONTEND_URL: http://localhost
+      OBJECT_STORAGE_PROVIDER: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-struct-check-files}
+      MINIO_SECURE: "false"
+      MINIO_PRESIGN_TTL_SECONDS: 900
+      SIGNED_URL_SECRET: ${SIGNED_URL_SECRET:-change_me_for_lab6}
+      SIGNED_URL_TTL_SECONDS: 900
+      GOOGLE_BOOKS_API_URL: https://www.googleapis.com/books/v1/volumes
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      GOOGLE_BOOKS_TIMEOUT_SECONDS: 8
+      GOOGLE_BOOKS_MAX_RESULTS: 5
+      GOOGLE_BOOKS_RATE_LIMIT_SECONDS: 1.0
+      GOOGLE_BOOKS_RETRIES: 2
+    ports:
+      - "8080:8080"
+    volumes:
+      - backend-storage:/app/server/storage
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost
+    container_name: struct-check-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  backend-storage:
+  minio-data:
